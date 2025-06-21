@@ -1,0 +1,78 @@
+# This is a Databricks asset bundle definition for profiler_run.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+bundle:
+  name: profiler_run
+  uuid: 445da9ac-72e6-466e-92ef-463b8c936198
+
+include:
+  - resources/*.yml
+
+resources:
+
+
+  clusters:
+    profiler_cluster:
+      spark_version: "13.3.x-scala2.12"  # Specify your desired Databricks Runtime version
+      node_type_id: "i3.xlarge"          # Specify your node type
+      num_workers: 2                      # Set number of workers
+      autotermination_minutes: 60         # Optional: auto-termination after 60 minutes
+      # You can add more cluster config as needed
+
+  jobs:
+    Profiler_Runs_for_Multi_Workspaces:
+      name: Profiler Runs for Multi Workspaces
+      job_clusters:
+        - job_cluster_key: profiler_cluster
+          new_cluster:
+            spark_version: "13.3.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 2
+            autotermination_minutes: 60
+      tasks:
+        - task_key: get_config
+          notebook_task:
+            notebook_path: /Workspace/Users/vimalthomas.joseph@databricks.com/.bundle/profiler_run/dev/files/src/synapse-profiler-1.2.7/00_config_orchestrator
+            source: WORKSPACE
+          job_cluster_key: profiler_cluster
+        - task_key: For_each_config_values
+          depends_on:
+            - task_key: get_config
+          for_each_task:
+            inputs: "{{tasks.get_config.values.config_list}}"
+            concurrency: 3
+            task:
+              task_key: For_each_config_values_iteration
+              notebook_task:
+                notebook_path: /Workspace/Users/vimalthomas.joseph@databricks.com/.bundle/profiler_run/dev/files/src/synapse-profiler-1.2.7/data_extract/05_run_data_extract_main
+                base_parameters:
+                  workspaceName: "{{input.workspaceName}}"
+                  developmentEndpoint: "{{input.developmentEndpoint}}"
+                  dedicatedSQLEndpoint: "{{input.dedicatedSQLEndpoint}}"
+                  serverlessSQLEndpoint: "{{input.serverlessSQLEndpoint}}"
+                  serverlessOnly: "{{input.serverlessOnly}}"
+                source: WORKSPACE
+              job_cluster_key: profiler_cluster
+      queue:
+        enabled: true
+
+
+targets:
+  dev:
+    # The default target uses 'mode: development' to create a development copy.
+    # - Deployed resources get prefixed with '[dev my_user_name]'
+    # - Any job schedules and triggers are paused by default.
+    # See also https://docs.databricks.com/dev-tools/bundles/deployment-modes.html.
+    mode: development
+    default: true
+    workspace:
+      host: e2-demo-field-eng.cloud.databricks.com
+
+  prod:
+    mode: production
+    workspace:
+      host: e2-demo-field-eng.cloud.databricks.com
+      # We explicitly deploy to /Workspace/Users/vimalthomas.joseph@databricks.com to make sure we only have a single copy.
+      root_path: /Workspace/Users/vimalthomas.joseph@databricks.com/.bundle/${bundle.name}/${bundle.target}
+    permissions:
+      - user_name: vimalthomas.joseph@databricks.com
+        level: CAN_MANAGE
